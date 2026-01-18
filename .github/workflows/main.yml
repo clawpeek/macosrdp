@@ -1,55 +1,46 @@
-name: macOS Sequoia VNC (Fixed Login)
+name: macOS Sequoia Tailscale VNC (Manual Fix)
 on: workflow_dispatch
 
 jobs:
   macos-vnc:
-    runs-on: macos-15 # ARM tabanlı Sequoia
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Tailscale Kur ve Bağlan
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+      - name: Tailscale Manuel Kurulum (macOS için)
+        env:
+          TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          # Tailscale'i brew ile kuruyoruz
+          brew install tailscale
+          # Tailscale servisini arka planda başlat
+          sudo tailscaled > /dev/null 2>&1 &
+          sleep 5
+          # Login ol ve ağına bağlan
+          sudo tailscale up --authkey=$TS_AUTHKEY --accept-routes
 
       - name: Kullanıcı Şifresini ve Otomatik Girişi Ayarla
         run: |
-          # Kullanıcı adını belirle
           USER_NAME=$(whoami)
           NEW_PASS="Ed4kaleen2024!"
-
-          # 1. Sistem kullanıcısının şifresini senin istediğin şifre yapıyoruz
           sudo dscl . -passwd /Users/$USER_NAME "$NEW_PASS"
-          
-          # 2. Otomatik girişi (Auto-Login) aktif et
           sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$USER_NAME"
-          
-          # 3. Ekran kilidini ve şifre sorma ekranını devre dışı bırak
-          sysadminctl -adminUser "$USER_NAME" -adminPassword "$NEW_PASS" -screenLock off
-          
-          echo "Kullanıcı: $USER_NAME"
-          echo "Şifre ayarlandı, kilitler açıldı devrem!"
+          # Sequoia için ekran kilidini esnetme
+          sudo sysadminctl -adminUser "$USER_NAME" -adminPassword "$NEW_PASS" -screenLock off || true
+          echo "Şifre ve giriş ayarlandı!"
 
-      - name: VNC ve Ekran Paylaşımını Ateşle
+      - name: VNC ve Ekran Paylaşımını Başlat
         run: |
-          # VNC erişimi için gereken izinleri ver
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
-          
-          # VNC şifresini sistem şifresiyle aynı yapalım (İhtiyat tedbiri)
-          sudo /usr/libexec/PlistBuddy -c "Set :TargetSharedDisplayMode 1" /Library/Preferences/com.apple.RemoteManagement.plist
-          
-          echo "VNC Servisi Hazır!"
+          echo "VNC Aktif!"
 
-      - name: Bağlantı Bilgilerini Yazdır
+      - name: IP Bilgisi ve Bekleme
         run: |
-          echo "---------------------------------------------------"
-          echo "BAĞLANTI BİLGİLERİ"
-          echo "IP Adresi (Tailscale): $(tailscale ip -4)"
-          echo "Kullanıcı Adı: $(whoami)"
+          echo "Tailscale IP'niz:"
+          tailscale ip -4
+          echo "Kullanıcı: runner"
           echo "Şifre: Ed4kaleen2024!"
-          echo "---------------------------------------------------"
-
-      - name: Sistemi Ayakta Tut (6 Saat)
-        run: sleep 21600
-        
+          # 6 saat açık tut
+          sleep 21600
+          
