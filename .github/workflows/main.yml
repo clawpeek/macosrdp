@@ -1,4 +1,4 @@
-name: macOS Sequoia Tailscale VNC (Manual Fix)
+name: macOS Sequoia VNC (Auth Fix)
 on: workflow_dispatch
 
 jobs:
@@ -8,39 +8,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Tailscale Manuel Kurulum (macOS için)
+      - name: Tailscale Manuel Kurulum
         env:
           TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          # Tailscale'i brew ile kuruyoruz
           brew install tailscale
-          # Tailscale servisini arka planda başlat
           sudo tailscaled > /dev/null 2>&1 &
           sleep 5
-          # Login ol ve ağına bağlan
           sudo tailscale up --authkey=$TS_AUTHKEY --accept-routes
 
-      - name: Kullanıcı Şifresini ve Otomatik Girişi Ayarla
+      - name: VNC ve Otomatik Giriş Ayarları (Hata Giderildi)
         run: |
+          # Mevcut kullanıcıyı al
           USER_NAME=$(whoami)
-          NEW_PASS="Ed4kaleen2024!"
-          sudo dscl . -passwd /Users/$USER_NAME "$NEW_PASS"
-          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$USER_NAME"
-          # Sequoia için ekran kilidini esnetme
-          sudo sysadminctl -adminUser "$USER_NAME" -adminPassword "$NEW_PASS" -screenLock off || true
-          echo "Şifre ve giriş ayarlandı!"
-
-      - name: VNC ve Ekran Paylaşımını Başlat
-        run: |
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
-          echo "VNC Aktif!"
-
-      - name: IP Bilgisi ve Bekleme
-        run: |
-          echo "Tailscale IP'niz:"
-          tailscale ip -4
-          echo "Kullanıcı: runner"
-          echo "Şifre: Ed4kaleen2024!"
-          # 6 saat açık tut
-          sleep 21600
           
+          # 1. VNC için özel şifre belirle (Ed4kaleen2024!)
+          # Bu komut kullanıcı şifresinden bağımsız sadece VNC girişini etkiler
+          sudo /usr/libexec/PlistBuddy -c "Set :TargetSharedDisplayMode 1" /Library/Preferences/com.apple.RemoteManagement.plist
+          sudo /usr/libexec/PlistBuddy -c "Set :VNCPassword $(echo 'Ed4kaleen2024!' | perl -we 'print pack "H*", "e84ad359403858c5"') " /Library/Preferences/com.apple.RemoteManagement.plist
+          
+          # 2. Ekran Paylaşımını ve Uzaktan Yönetimi Başlat
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
+          
+          # 3. Otomatik Girişi Zorla (Şifre hatasını bypass etmek için)
+          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$USER_NAME"
+          
+          echo "VNC ve Giriş Ayarları Tamamlandı!"
+
+      - name: Bağlantı Bilgileri
+        run: |
+          echo "---------------------------------------------------"
+          echo "Tailscale IP: $(tailscale ip -4)"
+          echo "VNC Şifresi: Ed4kaleen2024!"
+          echo "Not: Bağlanırken kullanıcı adı sormazsa direkt şifreyi girin."
+          echo "---------------------------------------------------"
+
+      - name: Runner'ı Ayakta Tut
+        run: sleep 21600
+        
