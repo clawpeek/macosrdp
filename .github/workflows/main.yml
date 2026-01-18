@@ -1,75 +1,55 @@
-name: macos-tailscale-screenshare-mydata
-
-on:
-  workflow_dispatch:
+name: macOS Sequoia VNC (Fixed Login)
+on: workflow_dispatch
 
 jobs:
-  macos:
-    runs-on: macos-latest   # ya da macos-15 / macos-26 (arm64 için en iyisi macos-26)
-
-    timeout-minutes: 360
-
+  macos-vnc:
+    runs-on: macos-15 # ARM tabanlı Sequoia
     steps:
-    - name: Tailscale'e katıl (resmi ve en stabil yol)
-      uses: tailscale/github-action@v4
-      with:
-        oauth-client-id:     ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
-        oauth-secret:        ${{ secrets.TAILSCALE_OAUTH_SECRET }}
-        tags:                tag:ci-macos,tag:github-runner
-        # alternatif: authkey: ${{ secrets.TAILSCALE_AUTHKEY }}  (ama oauth daha temiz)
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Yeni kullanıcı oluştur + yetki ver (VNC için lazım)
-      shell: bash
-      run: |
-        USER="yiğitremote"
-        PASS="SuperGizliSifre.2026!"
+      - name: Tailscale Kur ve Bağlan
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-        sudo sysadminctl -addUser "$USER" -fullName "Remote Yiğit" -password "$PASS" -admin
-        echo "Kullanıcı oluşturuldu: $USER / $PASS"
+      - name: Kullanıcı Şifresini ve Otomatik Girişi Ayarla
+        run: |
+          # Kullanıcı adını belirle
+          USER_NAME=$(whoami)
+          NEW_PASS="Ed4kaleen2024!"
 
-    - name: Screen Sharing (VNC) aktif et + şifre koy
-      shell: bash
-      run: |
-        # Ekran paylaşımını aç (Remote Management yerine basit Screen Sharing)
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate -configure -access -on \
-          -users yiğitremote -privs -allUsers \
-          -restart -agent -console
+          # 1. Sistem kullanıcısının şifresini senin istediğin şifre yapıyoruz
+          sudo dscl . -passwd /Users/$USER_NAME "$NEW_PASS"
+          
+          # 2. Otomatik girişi (Auto-Login) aktif et
+          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$USER_NAME"
+          
+          # 3. Ekran kilidini ve şifre sorma ekranını devre dışı bırak
+          sysadminctl -adminUser "$USER_NAME" -adminPassword "$NEW_PASS" -screenLock off
+          
+          echo "Kullanıcı: $USER_NAME"
+          echo "Şifre ayarlandı, kilitler açıldı devrem!"
 
-        # VNC şifresi koy (macOS 14+ için çalışır şekilde)
-        echo -n "VNC_SIFRE_2026" | perl -we '
-          BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" };
-          $_ = <>;
-          chomp;
-          s/^(.{8}).*/$1/;
-          @p = unpack "C*", $_;
-          foreach (@k) { printf "%c", $_ ^ (shift @p || 0) };
-          print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt
+      - name: VNC ve Ekran Paylaşımını Ateşle
+        run: |
+          # VNC erişimi için gereken izinleri ver
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
+          
+          # VNC şifresini sistem şifresiyle aynı yapalım (İhtiyat tedbiri)
+          sudo /usr/libexec/PlistBuddy -c "Set :TargetSharedDisplayMode 1" /Library/Preferences/com.apple.RemoteManagement.plist
+          
+          echo "VNC Servisi Hazır!"
 
-        echo "Screen Sharing aktif! VNC şifresi: VNC_SIFRE_2026"
+      - name: Bağlantı Bilgilerini Yazdır
+        run: |
+          echo "---------------------------------------------------"
+          echo "BAĞLANTI BİLGİLERİ"
+          echo "IP Adresi (Tailscale): $(tailscale ip -4)"
+          echo "Kullanıcı Adı: $(whoami)"
+          echo "Şifre: Ed4kaleen2024!"
+          echo "---------------------------------------------------"
 
-    - name: MyData klasörü hazırla
-      shell: bash
-      run: |
-        mkdir -p ~/MyData
-        sudo mkdir -p /Users/Shared/MyData
-        sudo chown -R $USER:staff /Users/Shared/MyData
-        sudo chmod -R 777 /Users/Shared/MyData   # full access
-        echo "MyData hazır — /Users/Shared/MyData yolundan erişebilirsin"
-
-    - name: Bağlantı bilgilerini göster + 6 saat nöbet
-      shell: bash
-      run: |
-        IP=$(tailscale ip --4)
-        echo ""
-        echo "===== MACOS UZAK MASAÜSTÜ HAZIR ====="
-        echo "Tailscale IP     → $IP"
-        echo "Kullanıcı        → yiğitremote"
-        echo "Şifre            → SuperGizliSifre.2026!"
-        echo "VNC Şifresi      → VNC_SIFRE_2026"
-        echo "Bağlanmak için   → Finder → Go → Connect to Server → vnc://$IP"
-        echo "MyData klasörü   → /Users/Shared/MyData"
-        echo "======================================="
-        echo ""
-
-        sleep 21600   # 6 saat bekle
+      - name: Sistemi Ayakta Tut (6 Saat)
+        run: sleep 21600
+        
