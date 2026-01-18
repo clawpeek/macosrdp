@@ -1,48 +1,43 @@
-name: macOS Sequoia VNC (Auth Fix)
+name: Ubuntu GNOME Desktop with Tailscale
 on: workflow_dispatch
 
 jobs:
-  macos-vnc:
-    runs-on: macos-15
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Tailscale Manuel Kurulum
-        env:
-          TS_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
-        run: |
-          brew install tailscale
-          sudo tailscaled > /dev/null 2>&1 &
-          sleep 5
-          sudo tailscale up --authkey=$TS_AUTHKEY --accept-routes
+      - name: Tailscale Kur ve Bağlan
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: VNC ve Otomatik Giriş Ayarları (Hata Giderildi)
+      - name: GNOME ve VNC Kurulumu (Operasyon Başlıyor)
         run: |
-          # Mevcut kullanıcıyı al
-          USER_NAME=$(whoami)
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          # Temel masaüstü bileşenleri ve TigerVNC kuruyoruz
+          sudo apt-get install -y ubuntu-desktop-minimal tigervnc-standalone-server tigervnc-common
           
-          # 1. VNC için özel şifre belirle (Ed4kaleen2024!)
-          # Bu komut kullanıcı şifresinden bağımsız sadece VNC girişini etkiler
-          sudo /usr/libexec/PlistBuddy -c "Set :TargetSharedDisplayMode 1" /Library/Preferences/com.apple.RemoteManagement.plist
-          sudo /usr/libexec/PlistBuddy -c "Set :VNCPassword $(echo 'Ed4kaleen2024!' | perl -we 'print pack "H*", "e84ad359403858c5"') " /Library/Preferences/com.apple.RemoteManagement.plist
+          # VNC şifresini ayarla (Ed4kaleen2024!)
+          mkdir -p ~/.vnc
+          echo "Ed4kaleen2024!" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
           
-          # 2. Ekran Paylaşımını ve Uzaktan Yönetimi Başlat
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -privs -all -allowAccessFor -allUsers
-          
-          # 3. Otomatik Girişi Zorla (Şifre hatasını bypass etmek için)
-          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser -string "$USER_NAME"
-          
-          echo "VNC ve Giriş Ayarları Tamamlandı!"
+          # VNC server'ı başlat (Ekran :1, Port 5901)
+          # 'localhost no' diyerek dışarıdan (Tailscale üzerinden) erişime açıyoruz
+          vncserver :1 -geometry 1280x720 -depth 24 -localhost no
 
-      - name: Bağlantı Bilgileri
+      - name: Bağlantı Bilgileri (Künye)
         run: |
           echo "---------------------------------------------------"
-          echo "Tailscale IP: $(tailscale ip -4)"
-          echo "VNC Şifresi: Ed4kaleen2024!"
-          echo "Not: Bağlanırken kullanıcı adı sormazsa direkt şifreyi girin."
+          echo "CİHAZIN TAILSCALE IP: $(tailscale ip -4)"
+          echo "VNC PORTU: 5901"
+          echo "VNC ŞİFRESİ: Ed4kaleen2024!"
           echo "---------------------------------------------------"
+          echo "Bağlanmak için: IP:5901 örneğin 100.64.0.1:5901"
 
-      - name: Runner'ı Ayakta Tut
+      - name: Nöbet Tut (6 Saat)
         run: sleep 21600
         
